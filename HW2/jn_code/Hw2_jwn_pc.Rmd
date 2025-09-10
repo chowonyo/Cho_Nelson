@@ -1,0 +1,337 @@
+---
+title: "Nelson Lab Hw 2"
+subtitle: "Jonathan Response on 20250906"
+author: "Paul Cho and Jonathan Nelson"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: 
+    toc: yes
+    toc_depth: 3
+    toc_float: true
+    number_sections: no
+    theme: bootstrap
+    df_print: paged
+    code_folding: hide
+    highlight: pygments
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+This file has **Jonathan's thoughts** on this homework written in <span style="color: blue;">Blue</span>.
+
+<span style="color: blue;">Top YAML section slightly modified to add: subtitle, outline, and code folding.</span>
+
+# 1.	Use the ‘setup.Rmd’ file to create the folders that you will use for the analysis of this dataset.
+
+### Loading packages first
+Run install.packages ("here") in the console
+
+<span style="color: blue;">Nice job commenting this in! I added ggplot2 for the DotPlot()</span>
+```{r}
+library(Seurat)
+library(dplyr)
+library(here)
+library(ggplot2)
+
+
+# install.packages('devtools')
+# devtools::install_github('immunogenomics/presto')
+
+here()
+```
+### 1.1 Music selection
+[Pat Metheny Group - Pat Metheny Group](https://open.spotify.com/album/4TC69U5HGclykFldzvsIao?si=WRLgAvpWSEO2S4D1JIc_lQ)
+
+<span style="color: blue;">I'm listening too! </span> <br>
+
+<span style="color: blue;">I might have added this above Question 1 </span>
+
+### Making folders
+<p> Using concatenate to make a list of folder names, then storing it in object "dirs"(directories). Folder names & functionalities were recommended by chat </p>
+
+<span style="color: blue;">Great! But stopping the code from running to not mess up my code structure</span>
+```{r eval=FALSE, include=TRUE}
+# - data/cellranger: where barcodes.tsv.gz, features.tsv.gz, matrix.mtx.gz (Q2) will go
+# - outputs: where you'll later save the Seurat object .rds (Q3f)
+# - results/figures, results/tables: plots and tabular outputs
+# - qc, logs, docs, scripts: supporting work
+dirs <- c(
+  "data/raw",
+  "data/cellranger",   # for barcodes.tsv.gz, features.tsv.gz, matrix.mtx.gz
+  "data/processed",
+  "scripts",
+  "results/figures",
+  "results/tables",
+  "outputs",           # folder to save .rds files
+  "qc",
+  "logs",
+  "docs"
+)
+```
+## 1a.	Knit the file and add documentation that you created the folders.
+
+Creating folders
+
+<span style="color: blue;">Great! But stopping the code from running to not mess up my code structure</span>
+```{r eval=FALSE, include=TRUE}
+full_paths <- file.path(here(), dirs)
+created <- logical(length(full_paths))
+
+for (i in seq_along(full_paths)) {
+  if (!dir.exists(full_paths[i])) {
+    dir.create(full_paths[i], recursive = TRUE, showWarnings = FALSE)
+    created[i] <- TRUE
+  } else {
+    created[i] <- FALSE
+  }
+}
+```
+
+Making sure the code prints as a log
+
+<span style="color: blue;">Great! But stopping the code from running to not mess up my code structure</span>
+```{r eval=FALSE, include=TRUE}
+creation_log <- data.frame(
+  directory = dirs,
+  path      = full_paths,
+  status    = ifelse(created, "created", "already existed"),
+  row.names = NULL
+)
+creation_log
+```
+I'm assuming the "already existed" part is because I already ran the script?
+
+***
+
+# 2.	Move the Cell Ranger Output files (barcodes.tsv.gz, features.tsv.gz, matrix.mtx.gz) into the new folder.
+
+Not sure whether I'm being asked to move them into cellranger with code? or just dragging & dropping them .. chat helped make template for this chunk:
+
+<span style="color: blue;">This is clever, but I didn't mean for you to move the files with R...just to move them so that you could use the here() to read the files</span>
+
+```{r eval=FALSE, include=FALSE}
+source_dir <- "~/Desktop/R projects/Nelson Hw 2/Homework Dataset"
+destination_dir <- here::here("data", "cellranger")
+
+files_to_move <- c("barcodes.tsv.gz", "features.tsv.gz", "matrix.mtx.gz")
+
+# Loop and move
+for (f in files_to_move) {
+  file.copy(from = file.path(source_dir, f),
+            to   = file.path(destination_dir, f),
+            overwrite = TRUE)
+}
+
+```
+
+## 2a. Use the package here() to upload the dataset so it sets a relative file length to upload the file.
+### Building path to cellranger folder
+
+<span style="color: blue;">I'm editing this to use the here() package with my file structure</span>
+```{r}
+kidney.data <- Read10X(data.dir = here("HW2", "datasets"))
+```
+
+Wrap into a Seurat object
+
+```{r}
+kidney <- CreateSeuratObject(counts = kidney.data, project = "Kidney")
+kidney
+```
+
+***
+
+# 3)	Analyze the shotgun kidney snRNAseq dataset. 
+Quality control using seurat
+```{r}
+cells_before <- ncol(kidney)
+kidney[["percent.mt"]] <- PercentageFeatureSet(kidney, pattern = "^mt-")
+head(kidney@meta.data)
+VlnPlot(kidney, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+kidney <- subset(kidney, subset = nFeature_RNA < 2000 & nFeature_RNA < 4000 & percent.mt < 20)
+cells_after <-ncol(kidney)
+cells_removed <- cells_before - cells_after
+VlnPlot(kidney, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+kidney <- NormalizeData(kidney, normalization.method = "LogNormalize", scale.factor = 10000)
+kidney <- FindVariableFeatures(kidney, selection.method = "vst", nfeatures = 2000)
+```
+cells_before and cells_after were created for 3ii
+
+### i.	What filtering parameters did you choose? Why? 
+1. Filtering out samples with a high % of mitochondrial genes i.e. dying/damaged cells
+2. Filtering out empty droplets & doublets, code from last week's answers
+
+### ii.	How many cells do they filter out?
+
+Using concatenate to print the number of cells filtered out:
+```{r}
+c(cells_before = cells_before,
+  cells_after  = cells_after,
+  cells_removed = cells_removed)
+```
+
+## b.	What resolution did decide to do use to maximize clustering diversity?
+Clustering(reusing code from last week):
+```{r}
+all.genes <- rownames(kidney)
+kidney <- ScaleData(kidney, features = all.genes)
+kidney <- RunPCA(kidney, features = VariableFeatures(object = kidney))
+kidney <- FindNeighbors(kidney, dims = 1:10)
+kidney <- FindClusters(kidney, resolution = 0.15)
+print(kidney[["pca"]], dims = 1:5, nfeatures = 5)
+```
+
+Getting UMAP
+```{r}
+kidney <- RunUMAP(kidney, dims = 1:20)
+DimPlot(kidney, reduction = "umap", label = TRUE)
+```
+
+i.	How many clusters did you get?
+13 clusters(0-12)
+ii.	Name the clusters at two different levels of specificity
+Confused by the wording of the question but I'm assuming I should use [Balzer et al.](https://pmc.ncbi.nlm.nih.gov/articles/PMC9233501/#:~:text=The%20kidney%20maintains%20electrolyte%2C%20water,types%20in%20the%20mammalian%20kidney.) to identify different cell types?
+
+
+
+```{r}
+kidney.markers <- FindAllMarkers(kidney, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+kidney.markers %>% group_by(cluster) %>% top_n(n = 5, wt = avg_log2FC)
+
+top5 <- kidney.markers %>%
+  group_by(cluster) %>%
+  slice_max(order_by = avg_log2FC, n = 5) %>%
+  arrange(cluster, desc(avg_log2FC))
+```
+
+<span style="color: blue;">Interesting here that there is no visual output here like a heatmap.</span>
+
+I used chat to categorize my data based on Balzer et al., probably not the best idea?? What's a way I can do this manually?
+
+<span style="color: blue;">This solution that you've written is manually constructing a table..rather than trying to query the data and examine the expression of cell markers in unique clusters. There's lots of ways you could do this. Violin Plots? Heatmap? The goal is to show which cell-specific genes are expressed in different clusters. If there are markers that are expressed in the same cluster, you might be tempted to re-cluster at a higher resolution </span>
+
+```{r}
+annot_tbl <- data.frame(
+  Cluster = 0:12,
+  Broad = c(
+    "Proximal tubule","Immune (mixed)","TAL","Collecting duct",
+    "DCT","Proximal tubule","Proximal tubule","Podocyte",
+    "CNT / late DCT","Collecting duct (IC)","Endothelial",
+    "Stromal","Macrophage/monocyte"
+  ),
+  Fine = c(
+    "PT S1/S2","T/B/NK mix","TAL (thick ascending limb)","CD principal",
+    "DCT","PT S3","Injured/oxidative PT","Podocyte",
+    "Connecting tubule","Intercalated (IC-A/B)","Capillary/glomerular/lymphatic endothelium",
+    "Fibroblast / mesangial / VSMC-pericyte","Macrophage/monocyte"
+  ),
+  Evidence = c(
+    "Slc5a2, Slc5a12, Lrp2, Slc34a1, Aqp1",
+    "Cd3d/Cd3e; Ms4a1/Cd79a; Nkg7/Gzmb",
+    "Umod, Slc12a1, Kcnj1, Cldn10",
+    "Aqp2, Aqp3, Scnn1g, Avpr2",
+    "Slc12a3, Trpm6, Pvalb",
+    "Slc22a6, Slc22a8, Gstm1, Cyp2d26",
+    "Havcr1 (Kim1), Cyp*",
+    "Nphs1, Nphs2, Synpo, Wt1",
+    "Calb1, Trpv5, Scnn1b, Kcnj10",
+    "Atp6v1b1/Slc4a1 (IC-A), Slc26a4 (IC-B)",
+    "Pecam1, Kdr, Cldn5 / Emcn / Lyve1, Prox1, Pdpn",
+    "Col1a1, Dcn, Lum / Pdgfrb, Itga8 / Acta2, Myh11, Rgs5",
+    "Lyz2, Adgre1, C1qa/C1qb, Cd68"
+  ),
+  stringsAsFactors = FALSE
+)
+
+knitr::kable(annot_tbl, caption = "Cluster annotations (broad & fine) with marker evidence")
+
+```
+iii.	Provide evidence for why you are naming the clusters as such.
+Marker expressions consistent with Balzer et al. as seen above (?)
+
+## c.	Re-level the clusters in a biological order that makes sense.
+i.	How did you decide on the order?
+Biological order: through nephron flow(e.g. podocyte -> proximal tubule -> loop of henle -> collecting duct?? Not sure how to put this into code though (Will try again after getting some advice)
+
+<span style="color: blue;">Yes, exactly.</span>
+
+## d.	Identify and print the DEGs that define one of the cell types in your dataset
+Identifying DEGs with FindMarkers, getting the top enriched genes then printing the top 20 markers - not sure how to do this part
+
+<span style="color: blue;">Lots of ways to do this...Make the DEG list as an object, use dplyr to arrange by ave_log2FC and then use "head" to list out the top 20 rows of the dataframe</span>
+
+## e.	Create a multidimensional dotplot that helped you determine the cell identity. i.	Order the genes/cells to make a diagonal.
+??? No idea where to start, will try again after getting advice
+
+<span style="color: blue;">Here is some DotPlot and leveling template code</span>
+
+```{r, fig.height=8, fig.width=8}
+# Creating a dot plot to cross reference the features with the cell clusters present, seeing the average expression and percent expressed 
+
+markers.to.plot1 <- c("Lrp2",         # PTS1, PTS2, PTS3
+                      "Slc5a12",      # PTS1
+                      "Slc13a3",      # PTS2
+                      "Slc16a9",      # PTS3
+                      "Epha7",        # DTL
+                      "Cryab",        # DTL
+                      "Slc12a1",      # TALA, TALB, MD
+                      "Cldn16",       # TALA
+                      "Cldn10",       # TALB
+                      "Nos1",         # MD
+                      "Slc12a3",      # DCT1, DCT2
+                      "Egf",          # DCT1
+                      "Slc8a1",       # CNT, DCT2
+                      "Aqp2",         # PC
+                      "Slc4a1",       # ICA
+                      "Kit",          # ICA
+                      "Slc26a4",      # ICB
+                      "Nphs1",        # PODO
+                      "Ncam1",        # PEC
+                      "Upk1b",        # URO
+                      "Flt1",         # EC
+                      "Emcn",         # EC
+                      "Lyve1",        # LYMPH
+                      "Kdr",          # LYMPH
+                      "Pdgfra",       # FIB
+                      "Pdgfrb",       # FIB, MES, VSMC
+                      "Piezo2",       # MES
+                      "Acta2",        # VSMC
+                      "Ptprc",        # LYMPHO, MACRO
+                      "Skap1",        # LYMPHO
+                      "Cd74"          # MACRO
+)
+
+p1 <- DotPlot(kidney,
+features = markers.to.plot1,
+dot.scale = 8,
+dot.min = 0,
+scale.max = 100,
+scale.min = 0,
+col.min = -2.5,
+col.max = 2.5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_flip() +
+  labs(x = "Gene Features", y = "Clusters")
+
+p1
+
+# Example Code for Leveling
+
+# subclass_order <- c("PTS1", "PTS2", "PTS3", "DTL", "TALA", "TALB", "MD", "DCT1", "DCT2", "CNT", "PC", "ICA", "ICB", "PODO", "PEC", "URO", "EC", "FIB", "MES", "LYMPHO", "MACRO")
+
+# seurat.obj.f_cleaned@meta.data$subclass <- factor(seurat.obj.f_cleaned@meta.data$subclass, levels = subclass_order)
+
+```
+
+## f.	Save your object as a .rds file in the outputs folder.
+Saving the processed Seurat object in the outputs folder
+
+<span style="color: blue;">Perfect. Just edited to fit my file structure</span>
+
+```{r}
+saveRDS(kidney, file = here("HW2", "outputs", "kidney_processed.rds"))
+```
